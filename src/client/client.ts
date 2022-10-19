@@ -273,6 +273,29 @@ gltfLoader.load('models/FemaleTPose.glb', function (gltf) {
                               modelReady = true
 
                               animations.standing()
+
+                              gltfLoader.load('models/Spider.glb', function (gltf) {
+                                gltf.scene.traverse(function(child){
+                                  if ((child as THREE.Mesh).isMesh) {
+                                      const mesh = (child as THREE.Mesh)
+                                      mesh.castShadow = true
+
+                                      switch (mesh.name) {
+                                        case "Object_10":
+                                          mesh.material = toonjointmaterial
+                                          break;
+                                        case "Object_11":
+                                          mesh.material = toonmaterial
+                                          break;
+                                      }
+                                  }
+                                })
+                                
+                                scene.add(gltf.scene)
+                                gltf.scene.position.set(-3,0,2)
+                                gltf.scene.scale.set(1.5,1.5,1.5)
+                              })
+
                           },
                           (xhr) => console.log((xhr.loaded / xhr.total) * 100 + '% loaded'),
                           (error) => console.log(error)
