@@ -545,15 +545,14 @@ function animate() {
 
     // helper.update()
     
-    if(!modelMesh.quaternion.equals(targetQuaternion)){
-      modelMesh.quaternion.rotateTowards(targetQuaternion, clock.getDelta() * 400)
-    }
-    
     delta = Math.min(clock.getDelta(), 0.1)
     
     world.step(delta)
 
     if (modelReady) {mixer.update(animationClock.getDelta())}
+    if(!modelMesh.quaternion.equals(targetQuaternion)){
+      modelMesh.quaternion.rotateTowards(targetQuaternion, animationClock.getDelta() * 400)
+    }
 
     icosahedronMesh.position.set(
         icosahedronBody.position.x,
