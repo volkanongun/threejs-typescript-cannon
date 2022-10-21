@@ -98,6 +98,14 @@ const fiveTone = new THREE.TextureLoader().load('img/gradientMaps/fiveTone.jpg')
 fiveTone.minFilter = THREE.NearestFilter
 fiveTone.magFilter = THREE.NearestFilter
 
+
+const world = new CANNON.World()
+world.gravity.set(0, -9.82, 0)
+// world.broadphase = new CANNON.NaiveBroadphase();
+// (world.solver as CANNON.GSSolver).iterations = 10
+// world.allowSleep = true
+
+
 const geometry = new THREE.BoxGeometry()
 const toonmaterial: THREE.MeshToonMaterial = new THREE.MeshToonMaterial({
     color: 0x18BFE3,
@@ -108,6 +116,17 @@ const toonjointmaterial: THREE.MeshToonMaterial = new THREE.MeshToonMaterial({
   color: 0X1C5B72,
   gradientMap: fiveTone,
 })
+
+const cube = new THREE.Mesh(geometry, toonmaterial)
+scene.add(cube)
+cube.position.set(-3, 3, 0)
+cube.castShadow = true
+
+const sphereGeometry = new THREE.SphereGeometry(.7)
+const sphere = new THREE.Mesh(sphereGeometry, toonmaterial)
+sphere.position.set(3, 3, 0)
+scene.add(sphere)
+sphere.castShadow = true
 
 const planeGeometry = new THREE.PlaneGeometry(1000,1000)
 const planeMaterial = new THREE.ShadowMaterial({
@@ -120,56 +139,182 @@ ground.rotation.set(-Math.PI/2,0,0)
 ground.receiveShadow = true
 sceneMeshes.push(ground)
 
+const planeShape = new CANNON.Plane()
+const planeBody = new CANNON.Body({ mass: 0 })
+planeBody.addShape(planeShape)
+planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
+world.addBody(planeBody)
+
+const icosahedron = new THREE.IcosahedronGeometry()
+const icosahedronMesh = new THREE.Mesh(icosahedron, toonmaterial)
+scene.add(icosahedronMesh)
+icosahedronMesh.position.set(-8,4,0)
+icosahedronMesh.castShadow = true
+
+  // icosohedron physics
+  let icosahedronPosition = icosahedronMesh.geometry.attributes.position.array
+  const icosahedronPoints: CANNON.Vec3[] = []
+  for (let i = 0; i < icosahedronPosition.length; i += 3) {
+      icosahedronPoints.push(new CANNON.Vec3(icosahedronPosition[i], icosahedronPosition[i + 1], icosahedronPosition[i + 2]))
+  }
+  const icosahedronFaces: number[][] = []
+  for (let i = 0; i < icosahedronPosition.length / 3; i += 3) {
+      icosahedronFaces.push([i, i + 1, i + 2])
+  }
+  const icosahedronShape = new CANNON.ConvexPolyhedron({
+      vertices: icosahedronPoints,
+      faces: icosahedronFaces,
+  })
+  const icosahedronBody = new CANNON.Body({ mass: 1 })
+  icosahedronBody.addShape(icosahedronShape)
+  icosahedronBody.position.x = icosahedronMesh.position.x
+  icosahedronBody.position.y = icosahedronMesh.position.y
+  icosahedronBody.position.z = icosahedronMesh.position.z
+  world.addBody(icosahedronBody)
+
 
 let mixer: THREE.AnimationMixer
 let modelReady = false
 let modelMesh = new THREE.Object3D
 const animationActions: THREE.AnimationAction[] = []
+let activeAction: THREE.AnimationAction
+let lastAction: THREE.AnimationAction
 const gltfLoader = new GLTFLoader()
 
 const animations = {
   default: function () {
       setAction(animationActions[0])
+  },
+  cheering: function () {
+      setAction(animationActions[1])
+  },
+  standing: function () {
+      setAction(animationActions[2])
+  },
+  running: function () {
+      setAction(animationActions[3])
+  },
+  walking: function(){
+    setAction(animationActions[4])
   }
 }
 
 const setAction = (toAction: THREE.AnimationAction) => {
-  if (toAction) {
-    toAction.play()
+  if (toAction != activeAction) {
+      lastAction = activeAction
+      activeAction = toAction
+      //lastAction.stop()
+      lastAction.fadeOut(.5)
+      activeAction.reset()
+      activeAction.fadeIn(.5)
+      activeAction.play()
   }
 }
 
-gltfLoader.load('models/Spider.glb', function (gltf) {
-  gltf.scene.traverse(function(child){
-    if ((child as THREE.Mesh).isMesh) {
-        const mesh = (child as THREE.Mesh)
-        mesh.castShadow = true
+gltfLoader.load('models/FemaleTPose.glb', function (gltf) {
+    gltf.scene.traverse(function(child){
+      if ((child as THREE.Mesh).isMesh) {
+          const m = (child as THREE.Mesh)
 
-        switch (mesh.name) {
-          case "Object_10":
-            mesh.material = toonjointmaterial
-            break;
-          case "Object_11":
-            mesh.material = toonmaterial
-            break;
-        }
-    }
-  })
+          switch(m.name){
+            case 'Beta_Surface':{
+              m.material = toonmaterial
+              break;
+            }
+            case 'Beta_Joints':{
+              m.material = toonjointmaterial
+              break;
+            }
+          }
 
-  modelMesh = gltf.scene
-  scene.add(gltf.scene)
-  gltf.scene.position.set(-2,0,2)
-  gltf.scene.scale.set(2.5,2.5,2.5)
+          m.castShadow = true
+      }
+    })
+    
+    scene.add(gltf.scene)
+    gltf.scene.position.y = 0
 
-  mixer = new THREE.AnimationMixer(gltf.scene)
+    mixer = new THREE.AnimationMixer(gltf.scene)
 
-  const animationAction = mixer.clipAction((gltf as any).animations[0])
-  animationActions.push(animationAction)
+    const animationAction = mixer.clipAction((gltf as any).animations[0])
+    animationActions.push(animationAction)
+    animationsFolder.add(animations, 'default')
+    activeAction = animationActions[0]
+    gltf.scene.scale.set(5,5,5)
 
-  modelReady = true
-},
-(xhr) => console.log((xhr.loaded / xhr.total) * 100 + '% loaded'),
-(error) => (console.log(error)))
+    modelMesh = gltf.scene
+
+    gltfLoader.load('models/animations/cheering.glb',(gltf) => {
+            console.log('loaded cheering')
+            const animationAction = mixer.clipAction((gltf as any).animations[0])
+            animationActions.push(animationAction)
+            animationsFolder.add(animations, 'cheering')
+
+            gltfLoader.load('models/animations/standing.glb',(gltf) => {
+                    console.log('loaded standing')
+                    const animationAction = mixer.clipAction((gltf as any).animations[0])
+                    animationActions.push(animationAction)
+                    animationsFolder.add(animations, 'standing')
+
+                    gltfLoader.load('models/animations/running.glb',(gltf) => {
+                            console.log('loaded running');
+                            
+                            const animationAction = mixer.clipAction((gltf as any).animations[0])
+                            animationActions.push(animationAction)
+                            animationsFolder.add(animations, 'running')
+
+                            gltfLoader.load('models/animations/walking.glb',(gltf) => {
+                              console.log('loaded walking');
+                              
+                              const animationAction = mixer.clipAction((gltf as any).animations[0])
+                              animationActions.push(animationAction)
+                              animationsFolder.add(animations, 'walking')
+  
+                              modelReady = true
+
+                              animations.standing()
+
+                              gltfLoader.load('models/Spider.glb', function (gltf) {
+                                gltf.scene.traverse(function(child){
+                                  if ((child as THREE.Mesh).isMesh) {
+                                      const mesh = (child as THREE.Mesh)
+                                      mesh.castShadow = true
+
+                                      switch (mesh.name) {
+                                        case "Object_10":
+                                          mesh.material = toonjointmaterial
+                                          break;
+                                        case "Object_11":
+                                          mesh.material = toonmaterial
+                                          break;
+                                      }
+                                  }
+                                })
+                                
+                                scene.add(gltf.scene)
+                                gltf.scene.position.set(-3,0,2)
+                                gltf.scene.scale.set(1.5,1.5,1.5)
+                              })
+
+                          },
+                          (xhr) => console.log((xhr.loaded / xhr.total) * 100 + '% loaded'),
+                          (error) => console.log(error)
+                        )},
+                        (xhr) => console.log((xhr.loaded / xhr.total) * 100 + '% loaded'),
+                        (error) => console.log(error)
+                    )
+                },
+                (xhr) => console.log((xhr.loaded / xhr.total) * 100 + '% loaded'),
+                (error) => console.log(error)
+            )
+        },
+        (xhr) => console.log((xhr.loaded / xhr.total) * 100 + '% loaded'),
+        (error) => (console.log(error))
+    )
+  },
+  (xhr) => console.log((xhr.loaded / xhr.total) * 100 + '% loaded'),
+  (error) => (console.log(error))
+)
 
 window.addEventListener('resize', onWindowResize, false)
 
@@ -183,6 +328,10 @@ const stats = Stats()
 document.body.appendChild(stats.dom)
 
 const gui = new GUI()
+const cubeFolder = gui.addFolder('cube rotation')
+cubeFolder.add(cube.rotation, "x", 0, Math.PI * 2)
+cubeFolder.add(cube.rotation, "y", 0, Math.PI * 2)
+cubeFolder.add(cube.rotation, "z", 0, Math.PI * 2)
 
 const directionalLightFolder = gui.addFolder('DirectionalLight')
 directionalLightFolder
@@ -295,6 +444,44 @@ animationsFolder.open()
 const raycaster = new THREE.Raycaster()
 const targetQuaternion = new THREE.Quaternion()
 
+renderer.domElement.addEventListener('dblclick', onDoubleClick, false)
+
+function onDoubleClick(event: MouseEvent) {
+    
+    const mouse = {
+        x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
+        y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1,
+    }
+
+    raycaster.setFromCamera(mouse, camera)
+
+    const intersects = raycaster.intersectObjects(sceneMeshes, false)
+
+    if (intersects.length > 0) {
+        const p = intersects[0].point
+
+        const distance = modelMesh.position.distanceTo(p)
+
+        const rotationMatrix = new THREE.Matrix4()
+        rotationMatrix.lookAt(p, modelMesh.position, modelMesh.up)
+        targetQuaternion.setFromRotationMatrix(rotationMatrix)
+
+        TWEEN.removeAll()
+        setAction(animationActions[3])
+        new TWEEN.Tween(modelMesh.position)
+          .to({
+            x: p.x,
+            y: p.y,
+            z: p.z
+          }, 200 / 2 * distance)
+          //.easing(TWEEN.Easing.Linear.None)
+          .start()
+          .onComplete(function(){
+            setAction(animationActions[2])
+          })
+    }
+}
+
 renderer.domElement.addEventListener("click", onClick)
 
 function onClick(e: MouseEvent) {
@@ -318,36 +505,102 @@ function onClick(e: MouseEvent) {
     targetQuaternion.setFromRotationMatrix(rotationMatrix)
 
     TWEEN.removeAll()
-    animations.default()
+    animations.walking()
 
     new TWEEN.Tween(modelMesh.position)
       .to({
         x: p.x,
         y: p.y,
         z: p.z
-      }, 300 / 2 * distance)
+      }, 400 / 2 * distance)
       //.easing(TWEEN.Easing.Linear.None)
       .start()
       .onComplete(function(){
-        console.log(animationActions[0])
-        animationActions[0].stop()
+        setAction(animationActions[2])
       })
   }
 }
 
+
+
+const torusKnotGeometry = new THREE.TorusKnotGeometry()
+const torusKnotMesh = new THREE.Mesh(torusKnotGeometry, toonmaterial)
+torusKnotMesh.position.x = -6
+torusKnotMesh.position.y = 6
+torusKnotMesh.castShadow = true
+scene.add(torusKnotMesh)
+
+const torusKnotPosition = torusKnotMesh.geometry.attributes.position.array
+const torusKnotPoints: CANNON.Vec3[] = []
+for (let i = 0; i < torusKnotPosition.length; i += 3) {
+    torusKnotPoints.push(new CANNON.Vec3(torusKnotPosition[i], torusKnotPosition[i + 1], torusKnotPosition[i + 2]));
+}
+
+const torusKnotFaces: number[][] = []
+for (let i = 0; i < torusKnotPosition.length / 3; i += 3) {
+    torusKnotFaces.push([i, i + 1, i + 2])
+}
+
+const torusKnotShape = CreateTrimesh(torusKnotMesh.geometry)
+const torusKnotBody = new CANNON.Body({ mass: 1 })
+torusKnotBody.addShape(torusKnotShape)
+torusKnotBody.position.x = torusKnotMesh.position.x
+torusKnotBody.position.y = torusKnotMesh.position.y
+torusKnotBody.position.z = torusKnotMesh.position.z
+world.addBody(torusKnotBody)
+
+function CreateTrimesh(geometry: THREE.BufferGeometry) {
+    const vertices = geometry.attributes.position.array
+    const indices = Object.keys(vertices).map(Number)
+    return new CANNON.Trimesh(vertices as [], indices)
+}
+
+
+const clock = new THREE.Clock()
 const animationClock = new THREE.Clock()
+let delta:number
 
 function animate() {
 
     requestAnimationFrame(animate)
 
     stats.update()
-    
-    if (modelReady) {mixer.update(animationClock.getDelta())}
 
+    // helper.update()
+    
+    delta = Math.min(clock.getDelta(), 0.1)
+    
+    world.step(delta)
+
+    if (modelReady) {mixer.update(animationClock.getDelta())}
     if(!modelMesh.quaternion.equals(targetQuaternion)){
       modelMesh.quaternion.rotateTowards(targetQuaternion, animationClock.getDelta() * 400)
     }
+
+    icosahedronMesh.position.set(
+        icosahedronBody.position.x,
+        icosahedronBody.position.y,
+        icosahedronBody.position.z
+    )
+
+    icosahedronMesh.quaternion.set(
+        icosahedronBody.quaternion.x,
+        icosahedronBody.quaternion.y,
+        icosahedronBody.quaternion.z,
+        icosahedronBody.quaternion.w
+    )
+
+    torusKnotMesh.position.set(
+      torusKnotBody.position.x,
+      torusKnotBody.position.y,
+      torusKnotBody.position.z
+    )
+    torusKnotMesh.quaternion.set(
+        torusKnotBody.quaternion.x,
+        torusKnotBody.quaternion.y,
+        torusKnotBody.quaternion.z,
+        torusKnotBody.quaternion.w
+    )
 
     camera.lookAt(new THREE.Vector3(0,3,0))
 
